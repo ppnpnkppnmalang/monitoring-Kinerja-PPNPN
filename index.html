@@ -108,6 +108,19 @@
   }
   .placeholder-text{ color:#9a9a9a; font-weight:700; }
 
+  /* Area Kerja (multi-select checkboxes) */
+  .area-list{ display:flex; flex-direction:column; gap:2px; margin-top:8px; }
+  .area-item{
+    display:flex; align-items:center; gap:10px;
+    padding:10px 4px;
+    border-bottom:1px solid #eee;
+  }
+  .area-item:last-child{ border-bottom:none; }
+  .area-item input[type="checkbox"]{
+    width:20px; height:20px; accent-color:var(--accent); flex:none;
+  }
+  .area-item label{ font-weight:700; font-size:14.5px; }
+
   /* Bukti (photo) */
   .bukti-row{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   .bukti-btn{
@@ -240,6 +253,16 @@
     <div class="error">Pilih sesi waktu kerja.</div>
   </div>
 
+  <!-- AREA KERJA (multi-select, depends on JABATAN) -->
+  <div class="field tall" id="field-area">
+    <div class="label-row">
+      <span class="label">AREA KERJA</span>
+    </div>
+    <div class="sub" id="areaHint">Pilih nama pegawai terlebih dahulu</div>
+    <div class="area-list" id="areaList"></div>
+    <div class="error">Pilih minimal satu area kerja.</div>
+  </div>
+
   <!-- 5a. BUKTI (photo proof) -->
   <div class="field tall" id="field-bukti">
     <div class="label" style="margin-bottom:10px;">BUKTI</div>
@@ -315,10 +338,20 @@ const ROLE_SHIFTS = {
   ],
 };
 
+// Role -> list of work areas that role is allowed to select.
+// A team member can pick more than one area, so this renders as
+// checkboxes rather than a dropdown. Edit these lists freely.
+const ROLE_AREAS = {
+  A: ["Area 1", "Area 2", "Area 3"],
+  B: ["Area 1", "Area 2"],
+  C: ["Area 3", "Area 4"],
+};
+
 /* ============================================================
    STATE
    ============================================================ */
 let selectedEmployee = null;
+let selectedAreas = [];    // ["Area 1", "Area 3", ...]
 let photos = [];           // [{file, dataUrl}]
 let coords = null;         // {lat, lng}
 let map, marker;
@@ -354,10 +387,12 @@ namaSelect.addEventListener("change", () => {
     jabatanDisplay.classList.remove("placeholder-text");
 
     populateShifts(selectedEmployee.jabatan);
+    populateAreas(selectedEmployee.jabatan);
   } else {
     jabatanDisplay.textContent = "JABATAN";
     jabatanDisplay.classList.add("placeholder-text");
     populateShifts(null);
+    populateAreas(null);
   }
 });
 
@@ -403,6 +438,41 @@ sesiSelect.addEventListener("change", () => {
     document.getElementById("field-sesi").classList.remove("invalid");
   }
 });
+
+/* ============================================================
+   AREA KERJA (depends on JABATAN, multiple selections allowed)
+   ============================================================ */
+const areaList = document.getElementById("areaList");
+const areaHint = document.getElementById("areaHint");
+
+function populateAreas(role) {
+  areaList.innerHTML = "";
+  selectedAreas = [];
+  document.getElementById("field-area").classList.remove("invalid");
+
+  if (!role || !ROLE_AREAS[role]) {
+    areaHint.textContent = "Pilih nama pegawai terlebih dahulu";
+    return;
+  }
+  areaHint.textContent = "Bisa pilih lebih dari satu";
+
+  ROLE_AREAS[role].forEach((area, i) => {
+    const id = "area-" + i;
+    const row = document.createElement("div");
+    row.className = "area-item";
+    row.innerHTML = `<input type="checkbox" id="${id}" value="${area}"><label for="${id}">${area}</label>`;
+    row.querySelector("input").addEventListener("change", (e) => {
+      if (e.target.checked) {
+        selectedAreas.push(area);
+      } else {
+        selectedAreas = selectedAreas.filter(a => a !== area);
+      }
+      document.getElementById("field-area").classList.remove("invalid");
+    });
+    areaList.appendChild(row);
+  });
+}
+populateAreas(null);
 
 /* ============================================================
    3. TANGGAL — default to today
@@ -525,6 +595,7 @@ form.addEventListener("submit", async (e) => {
   if (!selectedEmployee) markInvalid("field-nama");
   if (!tanggalInput.value) markInvalid("field-tanggal");
   if (!sesiSelect.value) markInvalid("field-sesi");
+  if (selectedAreas.length === 0) markInvalid("field-area");
   if (photos.length === 0) markInvalid("field-bukti");
   if (!coords) markInvalid("field-lokasi");
 
@@ -544,6 +615,7 @@ form.addEventListener("submit", async (e) => {
     tanggal: tanggalInput.value,
     sesiWaktu: sesiSelect.value,
     sesiLabel: sesiSelect.options[sesiSelect.selectedIndex].textContent,
+    areaKerja: selectedAreas,
     lokasi: coords,
     keterangan: keteranganInput.value,
     // Photos sent as base64 strings; Apps Script backend decodes and
@@ -570,6 +642,7 @@ form.addEventListener("submit", async (e) => {
     namaDisplay.textContent = "NAMA PEGAWAI"; namaDisplay.classList.add("placeholder-text");
     jabatanDisplay.textContent = "JABATAN"; jabatanDisplay.classList.add("placeholder-text");
     populateShifts(null);
+    populateAreas(null);
     charCount.textContent = "0 / 500";
     tanggalInput.valueAsDate = new Date();
   } catch (err) {
