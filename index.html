@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Monitoring Kinerja PPNPN</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<style>
+  :root{
+    --ink:#111111;
+    --line:#111111;
+    --bg:#ffffff;
+    --panel:#ffffff;
+    --accent:#1a6b4a;      /* deep green - "verified/field work" feel */
+    --accent-soft:#e7f3ee;
+    --warn:#b3261e;
+    --muted:#6b6b6b;
+    --radius-pill: 30px;
+    --radius-box: 20px;
+    --gap: 18px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    padding:24px 18px 60px;
+    max-width:520px;
+    margin:0 auto;
+  }
+  header{
+    margin-bottom:22px;
+  }
+  header h1{
+    font-size:20px;
+    font-weight:800;
+    letter-spacing:0.2px;
+    margin:0 0 4px;
+  }
+  header p{
+    margin:0;
+    color:var(--muted);
+    font-size:13.5px;
+  }
+
+  form{display:flex; flex-direction:column; gap:var(--gap);}
+
+  .field{
+    border:2.5px solid var(--line);
+    border-radius: var(--radius-pill);
+    padding:16px 20px;
+    position:relative;
+    background:var(--panel);
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .field.tall{ border-radius: var(--radius-box); }
+  .field:focus-within{
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .field.locked{
+    background:#fafafa;
+  }
+  .field.locked .value{ color:#444; }
+
+  .label-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .label{
+    font-weight:800;
+    font-size:15.5px;
+    letter-spacing:0.2px;
+  }
+  .sub{
+    font-size:12px;
+    color:var(--muted);
+    font-weight:600;
+    margin-top:2px;
+  }
+
+  select.native{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    opacity:0;
+    cursor:pointer;
+  }
+  .caret{
+    width:0; height:0;
+    border-left:9px solid transparent;
+    border-right:9px solid transparent;
+    border-top:12px solid var(--ink);
+    flex:none;
+  }
+
+  input[type="date"]{
+    border:none; outline:none; background:transparent;
+    font-weight:800; font-size:15.5px; width:100%;
+    font-family:inherit; color:var(--ink);
+  }
+
+  .value{
+    font-weight:800;
+    font-size:15.5px;
+  }
+  .placeholder-text{ color:#9a9a9a; font-weight:700; }
+
+  /* Bukti (photo) */
+  .bukti-row{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .bukti-btn{
+    border:2px solid var(--ink);
+    border-radius:999px;
+    padding:8px 16px;
+    font-weight:800;
+    font-size:13px;
+    background:var(--ink);
+    color:#fff;
+    cursor:pointer;
+  }
+  .thumb-wrap{
+    display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;
+  }
+  .thumb{
+    width:64px;height:64px;border-radius:12px;overflow:hidden;
+    border:2px solid var(--line); position:relative; background:#f2f2f2;
+  }
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .thumb .rm{
+    position:absolute; top:0; right:0; background:var(--warn); color:#fff;
+    border:none; width:20px; height:20px; font-size:12px; font-weight:800;
+    cursor:pointer; border-bottom-left-radius:8px;
+  }
+
+  /* Lokasi */
+  .lokasi-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:6px;}
+  .locate-btn{
+    border:2px solid var(--accent);
+    color:var(--accent);
+    background:#fff;
+    border-radius:999px;
+    padding:8px 16px;
+    font-weight:800;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .locate-btn:disabled{ opacity:0.5; cursor:progress; }
+  .coord{
+    font-size:12.5px; color:var(--muted); font-weight:700;
+  }
+  #map{
+    width:100%; height:180px; border-radius:14px; margin-top:12px;
+    border:2px solid var(--line); display:none;
+  }
+
+  /* Keterangan */
+  textarea{
+    width:100%; border:none; outline:none; resize:vertical;
+    font-family:inherit; font-size:15px; font-weight:600;
+    min-height:70px; background:transparent; color:var(--ink);
+  }
+  .charcount{
+    text-align:right; font-size:11.5px; color:var(--muted); font-weight:700; margin-top:4px;
+  }
+  .charcount.limit{ color:var(--warn); }
+
+  .error{
+    color:var(--warn); font-size:12px; font-weight:700; margin-top:6px; display:none;
+  }
+  .field.invalid{ border-color:var(--warn); }
+  .field.invalid .error{ display:block; }
+
+  button.submit{
+    margin-top:8px;
+    border:none;
+    background:var(--ink);
+    color:#fff;
+    font-weight:800;
+    font-size:16px;
+    padding:16px;
+    border-radius: var(--radius-pill);
+    cursor:pointer;
+  }
+  button.submit:active{ transform: scale(0.99); }
+  button.submit:disabled{ opacity:0.55; cursor:progress; }
+
+  .status{
+    text-align:center; font-size:13.5px; font-weight:700; margin-top:10px; min-height:18px;
+  }
+  .status.ok{ color:var(--accent); }
+  .status.err{ color:var(--warn); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Monitoring Kinerja</h1>
+  <p>Isi laporan kerja harian Anda di bawah ini.</p>
+</header>
+
+<form id="kinerjaForm" novalidate>
+
+  <!-- 1. NAMA PEGAWAI -->
+  <div class="field" id="field-nama">
+    <div class="label-row">
+      <span class="value placeholder-text" id="namaDisplay">NAMA PEGAWAI</span>
+      <span class="caret"></span>
+    </div>
+    <select class="native" id="namaPegawai" required></select>
+    <div class="error">Pilih nama pegawai.</div>
+  </div>
+
+  <!-- 2. JABATAN (locked / auto-filled) -->
+  <div class="field locked" id="field-jabatan">
+    <div class="label-row">
+      <span class="value placeholder-text" id="jabatanDisplay">JABATAN</span>
+    </div>
+    <div class="sub">Terisi otomatis sesuai data pegawai</div>
+  </div>
+
+  <!-- 3. TANGGAL -->
+  <div class="field" id="field-tanggal">
+    <div class="label-row">
+      <span class="label" style="font-size:12.5px;color:var(--muted);">TANGGAL</span>
+    </div>
+    <input type="date" id="tanggal" required>
+    <div class="error">Pilih tanggal.</div>
+  </div>
+
+  <!-- 4. SESI WAKTU PEKERJAAN -->
+  <div class="field" id="field-sesi">
+    <div class="label-row">
+      <span class="value placeholder-text" id="sesiDisplay">SESI WAKTU PEKERJAAN</span>
+      <span class="caret"></span>
+    </div>
+    <select class="native" id="sesiWaktu" required disabled></select>
+    <div class="sub" id="sesiHint">Pilih nama pegawai terlebih dahulu</div>
+    <div class="error">Pilih sesi waktu kerja.</div>
+  </div>
+
+  <!-- 5a. BUKTI (photo proof) -->
+  <div class="field tall" id="field-bukti">
+    <div class="label" style="margin-bottom:10px;">BUKTI</div>
+    <div class="bukti-row">
+      <label class="bukti-btn">
+        Ambil / Unggah Foto
+        <input type="file" id="buktiInput" accept="image/*" capture="environment" style="display:none">
+      </label>
+    </div>
+    <div class="thumb-wrap" id="thumbWrap"></div>
+    <div class="error">Unggah minimal 1 foto bukti kerja.</div>
+  </div>
+
+  <!-- 5b. LOKASI -->
+  <div class="field tall" id="field-lokasi">
+    <div class="label" style="margin-bottom:6px;">LOKASI</div>
+    <div class="lokasi-actions">
+      <button type="button" class="locate-btn" id="locateBtn">Ambil Lokasi Saat Ini</button>
+      <span class="coord" id="coordText">Belum ada lokasi</span>
+    </div>
+    <div id="map"></div>
+    <div class="error">Ambil lokasi Anda sebelum mengirim laporan.</div>
+  </div>
+
+  <!-- 6. KETERANGAN TAMBAHAN -->
+  <div class="field tall" id="field-keterangan">
+    <div class="label" style="margin-bottom:8px;">KETERANGAN TAMBAHAN</div>
+    <textarea id="keterangan" maxlength="500" placeholder="Tulis catatan tambahan (opsional)..."></textarea>
+    <div class="charcount" id="charCount">0 / 500</div>
+  </div>
+
+  <button type="submit" class="submit" id="submitBtn">Kirim Laporan</button>
+  <div class="status" id="statusMsg"></div>
+</form>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+/* ============================================================
+   CONFIG — edit this section to connect to your own backend
+   ============================================================ */
+
+// Replace with your deployed Google Apps Script Web App URL
+const SUBMIT_ENDPOINT = "https://script.google.com/macros/s/AKfycbwbpcJA_g3KCupaICOlIQKM8qW74Sns-CYQ167_ufsWoB932o10lVkW8mbBqRLi2PjQKA/exec";
+
+// Employee master data. In production, load this from the Apps Script
+// backend (GET request) instead of hardcoding, so only the admin
+// (editing the Sheet) controls names/roles — matching your spec that
+// JABATAN is admin-locked.
+const EMPLOYEES = [
+  { id: "E001", nama: "Ahmad Fauzi",     jabatan: "A" },
+  { id: "E002", nama: "Siti Rahmawati",  jabatan: "A" },
+  { id: "E003", nama: "Budi Santoso",    jabatan: "B" },
+  { id: "E004", nama: "Dewi Lestari",    jabatan: "B" },
+  { id: "E005", nama: "Rudi Hartono",    jabatan: "C" },
+];
+
+// Role -> available shift sessions. Extend freely for role C, D, etc.
+const ROLE_SHIFTS = {
+  A: [
+    { label: "Sesi 1 (06.00–12.00)", value: "A-1" },
+    { label: "Sesi 2 (12.00–18.00)", value: "A-2" },
+    { label: "Sesi 3 (18.00–24.00)", value: "A-3" },
+    { label: "Sesi 4 (24.00–06.00)", value: "A-4" },
+  ],
+  B: [
+    { label: "Sesi 1 (06.00–07.00)", value: "B-1" },
+    { label: "Sesi 2 (11.00–12.00)", value: "B-2" },
+    { label: "Sesi 3 (17.00–18.00)", value: "B-3" },
+  ],
+  C: [
+    // TODO: fill in Role C's designated shift windows
+    { label: "Sesi 1 (TBD)", value: "C-1" },
+  ],
+};
+
+/* ============================================================
+   STATE
+   ============================================================ */
+let selectedEmployee = null;
+let photos = [];           // [{file, dataUrl}]
+let coords = null;         // {lat, lng}
+let map, marker;
+
+/* ============================================================
+   1. NAMA PEGAWAI  -> 2. JABATAN
+   ============================================================ */
+const namaSelect = document.getElementById("namaPegawai");
+const namaDisplay = document.getElementById("namaDisplay");
+const jabatanDisplay = document.getElementById("jabatanDisplay");
+
+EMPLOYEES.forEach(emp => {
+  const opt = document.createElement("option");
+  opt.value = emp.id;
+  opt.textContent = emp.nama;
+  namaSelect.appendChild(opt);
+});
+// blank default option
+const blankOpt = document.createElement("option");
+blankOpt.value = ""; blankOpt.textContent = "Pilih nama pegawai";
+blankOpt.selected = true; blankOpt.disabled = true;
+namaSelect.insertBefore(blankOpt, namaSelect.firstChild);
+
+namaSelect.addEventListener("change", () => {
+  selectedEmployee = EMPLOYEES.find(e => e.id === namaSelect.value) || null;
+  document.getElementById("field-nama").classList.remove("invalid");
+
+  if (selectedEmployee) {
+    namaDisplay.textContent = selectedEmployee.nama;
+    namaDisplay.classList.remove("placeholder-text");
+
+    jabatanDisplay.textContent = "Jabatan: " + selectedEmployee.jabatan;
+    jabatanDisplay.classList.remove("placeholder-text");
+
+    populateShifts(selectedEmployee.jabatan);
+  } else {
+    jabatanDisplay.textContent = "JABATAN";
+    jabatanDisplay.classList.add("placeholder-text");
+    populateShifts(null);
+  }
+});
+
+/* ============================================================
+   4. SESI WAKTU PEKERJAAN (depends on JABATAN)
+   ============================================================ */
+const sesiSelect = document.getElementById("sesiWaktu");
+const sesiDisplay = document.getElementById("sesiDisplay");
+const sesiHint = document.getElementById("sesiHint");
+
+function populateShifts(role) {
+  sesiSelect.innerHTML = "";
+  sesiDisplay.textContent = "SESI WAKTU PEKERJAAN";
+  sesiDisplay.classList.add("placeholder-text");
+  document.getElementById("field-sesi").classList.remove("invalid");
+
+  if (!role || !ROLE_SHIFTS[role]) {
+    sesiSelect.disabled = true;
+    sesiHint.textContent = "Pilih nama pegawai terlebih dahulu";
+    return;
+  }
+  sesiSelect.disabled = false;
+  sesiHint.textContent = "Sesuai jadwal jabatan " + role;
+
+  const blank = document.createElement("option");
+  blank.value = ""; blank.textContent = "Pilih sesi";
+  blank.selected = true; blank.disabled = true;
+  sesiSelect.appendChild(blank);
+
+  ROLE_SHIFTS[role].forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s.value; opt.textContent = s.label;
+    sesiSelect.appendChild(opt);
+  });
+}
+populateShifts(null);
+
+sesiSelect.addEventListener("change", () => {
+  const chosen = ROLE_SHIFTS[selectedEmployee?.jabatan]?.find(s => s.value === sesiSelect.value);
+  if (chosen) {
+    sesiDisplay.textContent = chosen.label;
+    sesiDisplay.classList.remove("placeholder-text");
+    document.getElementById("field-sesi").classList.remove("invalid");
+  }
+});
+
+/* ============================================================
+   3. TANGGAL — default to today
+   ============================================================ */
+const tanggalInput = document.getElementById("tanggal");
+tanggalInput.valueAsDate = new Date();
+tanggalInput.addEventListener("change", () => {
+  document.getElementById("field-tanggal").classList.remove("invalid");
+});
+
+/* ============================================================
+   5a. BUKTI — photo capture / upload with thumbnails
+   ============================================================ */
+const buktiInput = document.getElementById("buktiInput");
+const thumbWrap = document.getElementById("thumbWrap");
+
+buktiInput.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    photos.push({ file, dataUrl: ev.target.result });
+    renderThumbs();
+    document.getElementById("field-bukti").classList.remove("invalid");
+  };
+  reader.readAsDataURL(file);
+  buktiInput.value = ""; // allow re-selecting same file again
+});
+
+function renderThumbs() {
+  thumbWrap.innerHTML = "";
+  photos.forEach((p, i) => {
+    const div = document.createElement("div");
+    div.className = "thumb";
+    div.innerHTML = `<img src="${p.dataUrl}" alt="Bukti ${i+1}"><button type="button" class="rm">×</button>`;
+    div.querySelector(".rm").addEventListener("click", () => {
+      photos.splice(i, 1);
+      renderThumbs();
+    });
+    thumbWrap.appendChild(div);
+  });
+}
+
+/* ============================================================
+   5b. LOKASI — geolocation + Leaflet map preview
+   ============================================================ */
+const locateBtn = document.getElementById("locateBtn");
+const coordText = document.getElementById("coordText");
+const mapEl = document.getElementById("map");
+
+locateBtn.addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    coordText.textContent = "Geolocation tidak didukung perangkat ini";
+    return;
+  }
+  locateBtn.disabled = true;
+  locateBtn.textContent = "Mencari lokasi...";
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      coordText.textContent = coords.lat.toFixed(6) + ", " + coords.lng.toFixed(6);
+      showMap(coords);
+      document.getElementById("field-lokasi").classList.remove("invalid");
+      locateBtn.disabled = false;
+      locateBtn.textContent = "Perbarui Lokasi";
+    },
+    (err) => {
+      coordText.textContent = "Gagal mengambil lokasi (" + err.message + ")";
+      locateBtn.disabled = false;
+      locateBtn.textContent = "Ambil Lokasi Saat Ini";
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+});
+
+function showMap(c) {
+  mapEl.style.display = "block";
+  if (!map) {
+    map = L.map(mapEl).setView([c.lat, c.lng], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(map);
+    marker = L.marker([c.lat, c.lng]).addTo(map);
+  } else {
+    map.setView([c.lat, c.lng], 16);
+    marker.setLatLng([c.lat, c.lng]);
+  }
+  setTimeout(() => map.invalidateSize(), 200);
+}
+
+/* ============================================================
+   6. KETERANGAN TAMBAHAN — 500 char counter
+   ============================================================ */
+const keteranganInput = document.getElementById("keterangan");
+const charCount = document.getElementById("charCount");
+
+keteranganInput.addEventListener("input", () => {
+  const len = keteranganInput.value.length;
+  charCount.textContent = len + " / 500";
+  charCount.classList.toggle("limit", len >= 480);
+});
+
+/* ============================================================
+   SUBMIT
+   ============================================================ */
+const form = document.getElementById("kinerjaForm");
+const submitBtn = document.getElementById("submitBtn");
+const statusMsg = document.getElementById("statusMsg");
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  statusMsg.textContent = "";
+  statusMsg.className = "status";
+
+  let valid = true;
+  const markInvalid = (id) => { document.getElementById(id).classList.add("invalid"); valid = false; };
+
+  if (!selectedEmployee) markInvalid("field-nama");
+  if (!tanggalInput.value) markInvalid("field-tanggal");
+  if (!sesiSelect.value) markInvalid("field-sesi");
+  if (photos.length === 0) markInvalid("field-bukti");
+  if (!coords) markInvalid("field-lokasi");
+
+  if (!valid) {
+    statusMsg.textContent = "Mohon lengkapi data yang bertanda merah.";
+    statusMsg.classList.add("err");
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Mengirim...";
+
+  const payload = {
+    idPegawai: selectedEmployee.id,
+    namaPegawai: selectedEmployee.nama,
+    jabatan: selectedEmployee.jabatan,
+    tanggal: tanggalInput.value,
+    sesiWaktu: sesiSelect.value,
+    sesiLabel: sesiSelect.options[sesiSelect.selectedIndex].textContent,
+    lokasi: coords,
+    keterangan: keteranganInput.value,
+    // Photos sent as base64 strings; Apps Script backend decodes and
+    // saves them into a linked Google Drive folder, storing the file
+    // URL in the Sheet row.
+    buktiFotos: photos.map(p => p.dataUrl),
+    submittedAt: new Date().toISOString(),
+  };
+
+  try {
+    const res = await fetch(SUBMIT_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" }, // avoids CORS preflight with Apps Script
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error("Server merespon dengan error");
+
+    statusMsg.textContent = "Laporan berhasil dikirim.";
+    statusMsg.classList.add("ok");
+    form.reset();
+    photos = []; renderThumbs();
+    coords = null; coordText.textContent = "Belum ada lokasi"; mapEl.style.display = "none";
+    selectedEmployee = null;
+    namaDisplay.textContent = "NAMA PEGAWAI"; namaDisplay.classList.add("placeholder-text");
+    jabatanDisplay.textContent = "JABATAN"; jabatanDisplay.classList.add("placeholder-text");
+    populateShifts(null);
+    charCount.textContent = "0 / 500";
+    tanggalInput.valueAsDate = new Date();
+  } catch (err) {
+    statusMsg.textContent = "Gagal mengirim laporan. Periksa koneksi internet Anda.";
+    statusMsg.classList.add("err");
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Kirim Laporan";
+  }
+});
+</script>
+</body>
+</html>
