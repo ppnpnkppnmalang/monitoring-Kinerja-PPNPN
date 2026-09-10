@@ -298,45 +298,11 @@
 // Replace with your deployed Google Apps Script Web App URL
 const SUBMIT_ENDPOINT = "https://script.google.com/macros/s/AKfycbwbpcJA_g3KCupaICOlIQKM8qW74Sns-CYQ167_ufsWoB932o10lVkW8mbBqRLi2PjQKA/exec";
 
-// Employee master data. In production, load this from the Apps Script
-// backend (GET request) instead of hardcoding, so only the admin
-// (editing the Sheet) controls names/roles — matching your spec that
-// JABATAN is admin-locked.
-const EMPLOYEES = [
-  { id: "E001", nama: "Ahmad Fauzi",     jabatan: "A" },
-  { id: "E002", nama: "Siti Rahmawati",  jabatan: "A" },
-  { id: "E003", nama: "Budi Santoso",    jabatan: "B" },
-  { id: "E004", nama: "Dewi Lestari",    jabatan: "B" },
-  { id: "E005", nama: "Rudi Hartono",    jabatan: "C" },
-];
-
-// Role -> available shift sessions. Extend freely for role C, D, etc.
-const ROLE_SHIFTS = {
-  A: [
-    { label: "Sesi 1 (06.00–12.00)", value: "A-1" },
-    { label: "Sesi 2 (12.00–18.00)", value: "A-2" },
-    { label: "Sesi 3 (18.00–24.00)", value: "A-3" },
-    { label: "Sesi 4 (24.00–06.00)", value: "A-4" },
-  ],
-  B: [
-    { label: "Sesi 1 (06.00–07.00)", value: "B-1" },
-    { label: "Sesi 2 (11.00–12.00)", value: "B-2" },
-    { label: "Sesi 3 (17.00–18.00)", value: "B-3" },
-  ],
-  C: [
-    // TODO: fill in Role C's designated shift windows
-    { label: "Sesi 1 (TBD)", value: "C-1" },
-  ],
-};
-
-// Role -> list of work areas that role is allowed to select.
-// A team member can pick more than one area, so this renders as
-// checkboxes rather than a dropdown. Edit these lists freely.
-const ROLE_AREAS = {
-  A: ["Area 1", "Area 2", "Area 3"],
-  B: ["Area 1", "Area 2"],
-  C: ["Area 3", "Area 4"],
-};
+// Employee master data now loads live from your Google Sheet's
+// "Data Pegawai" tab (via the Apps Script doGet() endpoint) instead of
+// being hardcoded here. Each employee's own row supplies their exact
+// Jabatan, Area Kerja options, and Sesi Waktu options.
+let EMPLOYEES = [];
 
 /* ============================================================
    STATE
@@ -349,22 +315,45 @@ let map, marker;
 
 /* ============================================================
    1. NAMA PEGAWAI  -> 2. JABATAN
+   Loads the employee list live from the Sheet, then wires up
+   the dropdown once data has arrived.
    ============================================================ */
 const namaSelect = document.getElementById("namaPegawai");
 const namaDisplay = document.getElementById("namaDisplay");
 const jabatanDisplay = document.getElementById("jabatanDisplay");
 
-EMPLOYEES.forEach(emp => {
-  const opt = document.createElement("option");
-  opt.value = emp.id;
-  opt.textContent = emp.nama;
-  namaSelect.appendChild(opt);
-});
-// blank default option
-const blankOpt = document.createElement("option");
-blankOpt.value = ""; blankOpt.textContent = "Pilih nama pegawai";
-blankOpt.selected = true; blankOpt.disabled = true;
-namaSelect.insertBefore(blankOpt, namaSelect.firstChild);
+function renderEmployeeOptions() {
+  namaSelect.innerHTML = "";
+  const blankOpt = document.createElement("option");
+  blankOpt.value = "";
+  blankOpt.textContent = EMPLOYEES.length ? "Pilih nama pegawai" : "Memuat data pegawai...";
+  blankOpt.selected = true; blankOpt.disabled = true;
+  namaSelect.appendChild(blankOpt);
+
+  EMPLOYEES.forEach(emp => {
+    const opt = document.createElement("option");
+    opt.value = emp.id;
+    opt.textContent = emp.nama;
+    namaSelect.appendChild(opt);
+  });
+}
+renderEmployeeOptions();
+
+async function loadEmployees() {
+  try {
+    const res = await fetch(SUBMIT_ENDPOINT, { method: "GET" });
+    const data = await res.json();
+    if (data.status !== "ok") throw new Error(data.message || "Gagal memuat data");
+    EMPLOYEES = data.employees;
+    renderEmployeeOptions();
+  } catch (err) {
+    namaSelect.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.textContent = "Gagal memuat data pegawai — muat ulang halaman";
+    namaSelect.appendChild(opt);
+  }
+}
+loadEmployees();
 
 namaSelect.addEventListener("change", () => {
   selectedEmployee = EMPLOYEES.find(e => e.id === namaSelect.value) || null;
@@ -377,8 +366,8 @@ namaSelect.addEventListener("change", () => {
     jabatanDisplay.textContent = "Jabatan: " + selectedEmployee.jabatan;
     jabatanDisplay.classList.remove("placeholder-text");
 
-    populateShifts(selectedEmployee.jabatan);
-    populateAreas(selectedEmployee.jabatan);
+    populateShifts(selectedEmployee);
+    populateAreas(selectedEmployee);
   } else {
     jabatanDisplay.textContent = "JABATAN";
     jabatanDisplay.classList.add("placeholder-text");
@@ -388,68 +377,68 @@ namaSelect.addEventListener("change", () => {
 });
 
 /* ============================================================
-   4. SESI WAKTU PEKERJAAN (depends on JABATAN)
+   4. SESI WAKTU PEKERJAAN (options come from this employee's own row)
    ============================================================ */
 const sesiSelect = document.getElementById("sesiWaktu");
 const sesiDisplay = document.getElementById("sesiDisplay");
 const sesiHint = document.getElementById("sesiHint");
 
-function populateShifts(role) {
+function populateShifts(employee) {
   sesiSelect.innerHTML = "";
   sesiDisplay.textContent = "SESI WAKTU PEKERJAAN";
   sesiDisplay.classList.add("placeholder-text");
   document.getElementById("field-sesi").classList.remove("invalid");
 
-  if (!role || !ROLE_SHIFTS[role]) {
+  if (!employee || !employee.sesi || !employee.sesi.length) {
     sesiSelect.disabled = true;
     sesiHint.textContent = "Pilih nama pegawai terlebih dahulu";
     return;
   }
   sesiSelect.disabled = false;
-  sesiHint.textContent = "Sesuai jadwal jabatan " + role;
+  sesiHint.textContent = "Sesuai jadwal " + employee.nama;
 
   const blank = document.createElement("option");
   blank.value = ""; blank.textContent = "Pilih sesi";
   blank.selected = true; blank.disabled = true;
   sesiSelect.appendChild(blank);
 
-  ROLE_SHIFTS[role].forEach(s => {
+  employee.sesi.forEach(label => {
     const opt = document.createElement("option");
-    opt.value = s.value; opt.textContent = s.label;
+    opt.value = label; opt.textContent = label;
     sesiSelect.appendChild(opt);
   });
 }
 populateShifts(null);
 
 sesiSelect.addEventListener("change", () => {
-  const chosen = ROLE_SHIFTS[selectedEmployee?.jabatan]?.find(s => s.value === sesiSelect.value);
-  if (chosen) {
-    sesiDisplay.textContent = chosen.label;
+  if (sesiSelect.value) {
+    sesiDisplay.textContent = sesiSelect.value;
     sesiDisplay.classList.remove("placeholder-text");
     document.getElementById("field-sesi").classList.remove("invalid");
   }
 });
 
 /* ============================================================
-   AREA KERJA (depends on JABATAN, multiple selections allowed)
+   AREA KERJA (options come from this employee's own row,
+   multiple selections allowed)
    Each checked area reveals its own photo upload slot underneath.
    ============================================================ */
 const areaList = document.getElementById("areaList");
 const areaHint = document.getElementById("areaHint");
 
-function populateAreas(role) {
+function populateAreas(employee) {
   areaList.innerHTML = "";
   selectedAreas = [];
   photosByArea = {};
   document.getElementById("field-area").classList.remove("invalid");
 
-  if (!role || !ROLE_AREAS[role]) {
+  if (!employee || !employee.areas || !employee.areas.length) {
     areaHint.textContent = "Pilih nama pegawai terlebih dahulu";
     return;
   }
   areaHint.textContent = "Bisa pilih lebih dari satu — unggah foto untuk tiap area";
 
-  ROLE_AREAS[role].forEach((area, i) => {
+  employee.areas.forEach((area, i) => {
     const checkId = "area-" + i;
     const row = document.createElement("div");
     row.className = "area-item";
