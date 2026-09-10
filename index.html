@@ -305,6 +305,41 @@ const SUBMIT_ENDPOINT = "https://script.google.com/macros/s/AKfycbwbpcJA_g3KCupa
 let EMPLOYEES = [];
 
 /* ============================================================
+   Photo resizing — shrinks any photo to max 1280px on its longest
+   side and compresses it, before it's turned into base64 and sent.
+   Keeps photos easy to view while cutting Drive storage use a lot.
+   ============================================================ */
+function resizeImage(file, maxDim = 1280, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Gagal membaca file"));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Gagal memuat gambar"));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round(height * (maxDim / width));
+            width = maxDim;
+          } else {
+            width = Math.round(width * (maxDim / height));
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ============================================================
    STATE
    ============================================================ */
 let selectedEmployee = null;
@@ -475,14 +510,15 @@ function populateAreas(employee) {
     photoInput.addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
+      resizeImage(file).then(dataUrl => {
         if (!photosByArea[area]) photosByArea[area] = [];
-        photosByArea[area].push({ dataUrl: ev.target.result });
+        photosByArea[area].push({ dataUrl });
         renderAreaThumbs(area, i);
         document.getElementById("field-area").classList.remove("invalid");
-      };
-      reader.readAsDataURL(file);
+      }).catch(() => {
+        statusMsg.textContent = "Gagal memproses foto, coba lagi.";
+        statusMsg.classList.add("err");
+      });
       photoInput.value = ""; // allow re-selecting the same file again
     });
 
