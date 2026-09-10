@@ -108,18 +108,21 @@
   }
   .placeholder-text{ color:#9a9a9a; font-weight:700; }
 
-  /* Area Kerja (multi-select checkboxes) */
+  /* Area Kerja (multi-select checkboxes, each with its own photo slot) */
   .area-list{ display:flex; flex-direction:column; gap:2px; margin-top:8px; }
   .area-item{
-    display:flex; align-items:center; gap:10px;
-    padding:10px 4px;
+    display:flex; flex-direction:column; gap:8px;
+    padding:12px 4px;
     border-bottom:1px solid #eee;
   }
   .area-item:last-child{ border-bottom:none; }
-  .area-item input[type="checkbox"]{
+  .area-check-row{ display:flex; align-items:center; gap:10px; }
+  .area-check-row input[type="checkbox"]{
     width:20px; height:20px; accent-color:var(--accent); flex:none;
   }
-  .area-item label{ font-weight:700; font-size:14.5px; }
+  .area-check-row label{ font-weight:700; font-size:14.5px; }
+  .area-photo-section{ display:none; padding-left:30px; }
+  .area-photo-section.show{ display:block; }
 
   /* Bukti (photo) */
   .bukti-row{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
@@ -133,6 +136,7 @@
     color:#fff;
     cursor:pointer;
   }
+  .bukti-btn.small{ padding:6px 14px; font-size:12px; }
   .thumb-wrap{
     display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;
   }
@@ -253,27 +257,14 @@
     <div class="error">Pilih sesi waktu kerja.</div>
   </div>
 
-  <!-- AREA KERJA (multi-select, depends on JABATAN) -->
+  <!-- AREA KERJA (multi-select, each area gets its own photo upload) -->
   <div class="field tall" id="field-area">
     <div class="label-row">
       <span class="label">AREA KERJA</span>
     </div>
     <div class="sub" id="areaHint">Pilih nama pegawai terlebih dahulu</div>
     <div class="area-list" id="areaList"></div>
-    <div class="error">Pilih minimal satu area kerja.</div>
-  </div>
-
-  <!-- 5a. BUKTI (photo proof) -->
-  <div class="field tall" id="field-bukti">
-    <div class="label" style="margin-bottom:10px;">BUKTI</div>
-    <div class="bukti-row">
-      <label class="bukti-btn">
-        Ambil / Unggah Foto
-        <input type="file" id="buktiInput" accept="image/*" capture="environment" style="display:none">
-      </label>
-    </div>
-    <div class="thumb-wrap" id="thumbWrap"></div>
-    <div class="error">Unggah minimal 1 foto bukti kerja.</div>
+    <div class="error">Pilih minimal satu area, dan unggah foto untuk tiap area yang dipilih.</div>
   </div>
 
   <!-- 5b. LOKASI -->
@@ -352,7 +343,7 @@ const ROLE_AREAS = {
    ============================================================ */
 let selectedEmployee = null;
 let selectedAreas = [];    // ["Area 1", "Area 3", ...]
-let photos = [];           // [{file, dataUrl}]
+let photosByArea = {};     // { "Area 1": [{dataUrl}, ...], "Area 2": [...] }
 let coords = null;         // {lat, lng}
 let map, marker;
 
@@ -441,6 +432,7 @@ sesiSelect.addEventListener("change", () => {
 
 /* ============================================================
    AREA KERJA (depends on JABATAN, multiple selections allowed)
+   Each checked area reveals its own photo upload slot underneath.
    ============================================================ */
 const areaList = document.getElementById("areaList");
 const areaHint = document.getElementById("areaHint");
@@ -448,28 +440,80 @@ const areaHint = document.getElementById("areaHint");
 function populateAreas(role) {
   areaList.innerHTML = "";
   selectedAreas = [];
+  photosByArea = {};
   document.getElementById("field-area").classList.remove("invalid");
 
   if (!role || !ROLE_AREAS[role]) {
     areaHint.textContent = "Pilih nama pegawai terlebih dahulu";
     return;
   }
-  areaHint.textContent = "Bisa pilih lebih dari satu";
+  areaHint.textContent = "Bisa pilih lebih dari satu — unggah foto untuk tiap area";
 
   ROLE_AREAS[role].forEach((area, i) => {
-    const id = "area-" + i;
+    const checkId = "area-" + i;
     const row = document.createElement("div");
     row.className = "area-item";
-    row.innerHTML = `<input type="checkbox" id="${id}" value="${area}"><label for="${id}">${area}</label>`;
-    row.querySelector("input").addEventListener("change", (e) => {
+    row.innerHTML = `
+      <div class="area-check-row">
+        <input type="checkbox" id="${checkId}" value="${area}">
+        <label for="${checkId}">${area}</label>
+      </div>
+      <div class="area-photo-section" id="photo-section-${i}">
+        <label class="bukti-btn small">
+          Ambil / Unggah Foto — ${area}
+          <input type="file" accept="image/*" capture="environment" style="display:none" class="area-photo-input">
+        </label>
+        <div class="thumb-wrap" id="thumbs-${i}"></div>
+      </div>`;
+
+    const checkbox = row.querySelector('input[type="checkbox"]');
+    const photoSection = row.querySelector(".area-photo-section");
+    const photoInput = row.querySelector(".area-photo-input");
+
+    checkbox.addEventListener("change", (e) => {
+      document.getElementById("field-area").classList.remove("invalid");
       if (e.target.checked) {
         selectedAreas.push(area);
+        photoSection.classList.add("show");
       } else {
         selectedAreas = selectedAreas.filter(a => a !== area);
+        photoSection.classList.remove("show");
+        delete photosByArea[area]; // discard photos for a deselected area
+        renderAreaThumbs(area, i);
       }
-      document.getElementById("field-area").classList.remove("invalid");
     });
+
+    photoInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (!photosByArea[area]) photosByArea[area] = [];
+        photosByArea[area].push({ dataUrl: ev.target.result });
+        renderAreaThumbs(area, i);
+        document.getElementById("field-area").classList.remove("invalid");
+      };
+      reader.readAsDataURL(file);
+      photoInput.value = ""; // allow re-selecting the same file again
+    });
+
     areaList.appendChild(row);
+  });
+}
+
+function renderAreaThumbs(area, i) {
+  const wrap = document.getElementById("thumbs-" + i);
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  (photosByArea[area] || []).forEach((p, idx) => {
+    const div = document.createElement("div");
+    div.className = "thumb";
+    div.innerHTML = `<img src="${p.dataUrl}" alt="${area} ${idx+1}"><button type="button" class="rm">×</button>`;
+    div.querySelector(".rm").addEventListener("click", () => {
+      photosByArea[area].splice(idx, 1);
+      renderAreaThumbs(area, i);
+    });
+    wrap.appendChild(div);
   });
 }
 populateAreas(null);
@@ -482,39 +526,6 @@ tanggalInput.valueAsDate = new Date();
 tanggalInput.addEventListener("change", () => {
   document.getElementById("field-tanggal").classList.remove("invalid");
 });
-
-/* ============================================================
-   5a. BUKTI — photo capture / upload with thumbnails
-   ============================================================ */
-const buktiInput = document.getElementById("buktiInput");
-const thumbWrap = document.getElementById("thumbWrap");
-
-buktiInput.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    photos.push({ file, dataUrl: ev.target.result });
-    renderThumbs();
-    document.getElementById("field-bukti").classList.remove("invalid");
-  };
-  reader.readAsDataURL(file);
-  buktiInput.value = ""; // allow re-selecting same file again
-});
-
-function renderThumbs() {
-  thumbWrap.innerHTML = "";
-  photos.forEach((p, i) => {
-    const div = document.createElement("div");
-    div.className = "thumb";
-    div.innerHTML = `<img src="${p.dataUrl}" alt="Bukti ${i+1}"><button type="button" class="rm">×</button>`;
-    div.querySelector(".rm").addEventListener("click", () => {
-      photos.splice(i, 1);
-      renderThumbs();
-    });
-    thumbWrap.appendChild(div);
-  });
-}
 
 /* ============================================================
    5b. LOKASI — geolocation + Leaflet map preview
@@ -596,7 +607,8 @@ form.addEventListener("submit", async (e) => {
   if (!tanggalInput.value) markInvalid("field-tanggal");
   if (!sesiSelect.value) markInvalid("field-sesi");
   if (selectedAreas.length === 0) markInvalid("field-area");
-  if (photos.length === 0) markInvalid("field-bukti");
+  // every selected area needs at least one photo
+  if (selectedAreas.some(a => !photosByArea[a] || photosByArea[a].length === 0)) markInvalid("field-area");
   if (!coords) markInvalid("field-lokasi");
 
   if (!valid) {
@@ -618,10 +630,11 @@ form.addEventListener("submit", async (e) => {
     areaKerja: selectedAreas,
     lokasi: coords,
     keterangan: keteranganInput.value,
-    // Photos sent as base64 strings; Apps Script backend decodes and
-    // saves them into a linked Google Drive folder, storing the file
-    // URL in the Sheet row.
-    buktiFotos: photos.map(p => p.dataUrl),
+    // Photos sent grouped by area — the Apps Script backend saves each
+    // one to Drive and records which area it belongs to in the Sheet.
+    buktiFotos: selectedAreas.flatMap(area =>
+      (photosByArea[area] || []).map(p => ({ area, dataUrl: p.dataUrl }))
+    ),
     submittedAt: new Date().toISOString(),
   };
 
@@ -636,7 +649,6 @@ form.addEventListener("submit", async (e) => {
     statusMsg.textContent = "Laporan berhasil dikirim.";
     statusMsg.classList.add("ok");
     form.reset();
-    photos = []; renderThumbs();
     coords = null; coordText.textContent = "Belum ada lokasi"; mapEl.style.display = "none";
     selectedEmployee = null;
     namaDisplay.textContent = "NAMA PEGAWAI"; namaDisplay.classList.add("placeholder-text");
