@@ -335,7 +335,6 @@ function renderAreaKerja(jabatanList, employees, submittedSet, submittedAreaPair
     document.getElementById(gaugeId + "-frac").textContent = `${submitted}/${total}`;
   };
 }
-
 /* ---------- 3. Daily View ---------- */
 function renderDailyView(employees, submissions, submittedAreaPairs) {
   const totalAreaSlots = employees.reduce((sum, e) => sum + e.areas.length, 0);
