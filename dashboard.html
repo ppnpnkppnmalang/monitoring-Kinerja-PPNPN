@@ -310,8 +310,6 @@ function renderAreaKerja(jabatanList, employees, submittedSet, submittedAreaPair
       </div>`;
   }).join("") || `<div class="empty-note">Belum ada data pegawai.</div>`;
 
-  jabatanList.forEach((j, idx) => window.__updateGauge("gauge-" + idx, j));
-
   // Exposed so the <select onchange> above can call back into this scope
   window.__updateGauge = function(gaugeId, jabatan) {
     const sesiFilter = document.getElementById("sel-" + gaugeId)?.value || "";
@@ -334,6 +332,8 @@ function renderAreaKerja(jabatanList, employees, submittedSet, submittedAreaPair
     document.getElementById(gaugeId + "-pct").textContent = pct + "%";
     document.getElementById(gaugeId + "-frac").textContent = `${submitted}/${total}`;
   };
+
+  jabatanList.forEach((j, idx) => window.__updateGauge("gauge-" + idx, j));
 }
 /* ---------- 3. Daily View ---------- */
 function renderDailyView(employees, submissions, submittedAreaPairs) {
