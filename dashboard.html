@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitoring PPNPN Dashboard</title>
+<style>
+  :root{
+    --page-bg:#f3f1e6;
+    --header-bg:#a7bd8c;
+    --pill-bg:#c7d4ac;
+    --card-bg:#fdfcf7;
+    --ink:#26301f;
+    --muted:#6b7561;
+    --line:#d8dcc7;
+    --ok:#4c7a3f;
+    --bad:#b3452f;
+    --track:#e7e4d3;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--page-bg);
+    color:var(--ink);
+    font-family:"Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    padding:18px;
+  }
+  .wrap{ max-width:1280px; margin:0 auto; }
+
+  /* Header */
+  header{
+    background:var(--header-bg);
+    border-radius:16px;
+    padding:20px 26px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    color:#fff;
+    margin-bottom:18px;
+    flex-wrap:wrap;
+    gap:12px;
+  }
+  .date-nav{ display:flex; align-items:center; gap:10px; font-weight:700; font-size:13.5px; }
+  .date-nav button{
+    background:rgba(255,255,255,0.25); border:none; color:#fff; width:28px; height:28px;
+    border-radius:8px; cursor:pointer; font-size:14px; font-weight:800;
+  }
+  .date-nav button:hover{ background:rgba(255,255,255,0.4); }
+  header h1{ font-size:22px; margin:0; text-align:center; flex:1; }
+  .refresh-btn{
+    background:rgba(255,255,255,0.25); border:none; color:#fff; font-weight:700;
+    padding:8px 14px; border-radius:999px; cursor:pointer; font-size:13px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .refresh-btn:hover{ background:rgba(255,255,255,0.4); }
+
+  /* Card shell */
+  .card{
+    background:var(--card-bg);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:16px;
+    margin-bottom:16px;
+  }
+  .pill-title{
+    display:inline-block;
+    background:var(--pill-bg);
+    padding:6px 18px;
+    border-radius:999px;
+    font-weight:800;
+    font-size:13.5px;
+    margin-bottom:14px;
+  }
+
+  /* Grid layout */
+  .grid-top{ display:grid; grid-template-columns:1.1fr 1.3fr 1fr; gap:16px; align-items:start; }
+  .grid-mid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width: 980px){
+    .grid-top{ grid-template-columns:1fr; }
+    .grid-mid{ grid-template-columns:1fr; }
+  }
+
+  /* Sesi Kerja bars */
+  .bar-row{ display:flex; align-items:center; gap:10px; margin-bottom:12px; font-size:12.5px; font-weight:700; }
+  .bar-row .label{ width:90px; flex:none; }
+  .bar-track{ flex:1; height:14px; background:var(--track); border-radius:8px; overflow:hidden; }
+  .bar-fill{ height:100%; background:var(--ok); border-radius:8px; }
+  .bar-val{ width:34px; flex:none; text-align:right; color:var(--muted); }
+
+  /* Area Kerja gauges */
+  .gauge-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .gauge-card{ text-align:center; }
+  .gauge-card select{
+    font-size:10.5px; font-weight:700; border:1px solid var(--line); border-radius:8px;
+    padding:2px 4px; margin-bottom:4px; max-width:100%;
+  }
+  .donut{
+    width:78px; height:78px; border-radius:50%; margin:4px auto;
+    display:flex; align-items:center; justify-content:center;
+    position:relative;
+  }
+  .donut::before{
+    content:""; position:absolute; inset:10px; background:var(--card-bg); border-radius:50%;
+  }
+  .donut span{ position:relative; font-weight:800; font-size:13px; }
+  .gauge-name{ font-weight:800; font-size:12.5px; }
+  .gauge-frac{ font-size:11px; color:var(--muted); font-weight:700; }
+
+  /* Daily view / list cards */
+  .check-item{ display:flex; align-items:center; gap:8px; font-weight:700; font-size:13px; margin-bottom:8px; }
+  .check-icon{
+    width:18px; height:18px; border-radius:50%; background:var(--ok); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:11px; flex:none;
+  }
+
+  .scroll-list{ max-height:180px; overflow-y:auto; font-size:12.5px; }
+  .scroll-list .row{ padding:6px 0; border-bottom:1px solid var(--line); }
+  .scroll-list .row:last-child{ border-bottom:none; }
+  .scroll-list .row b{ font-weight:800; }
+  .scroll-list .miss{ color:var(--bad); font-weight:700; }
+  .empty-note{ color:var(--muted); font-size:12.5px; font-style:italic; }
+
+  /* Team performance */
+  .perf-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px 18px; }
+  @media (max-width: 700px){ .perf-grid{ grid-template-columns:1fr; } }
+  .perf-item{ font-size:12px; }
+  .perf-name-row{ display:flex; justify-content:space-between; font-weight:800; margin-bottom:4px; }
+  .perf-pct{ color:var(--ok); }
+  .perf-track{ height:8px; background:var(--track); border-radius:6px; overflow:hidden; }
+  .perf-fill{ height:100%; background:var(--ok); }
+
+  /* Detil kerja */
+  .detil-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:12px; }
+  .detil-card{ border:1px solid var(--line); border-radius:12px; padding:10px 12px; }
+  .detil-card h4{ margin:0 0 6px; font-size:13px; }
+  .sesi-block{ margin-bottom:6px; }
+  .sesi-block .sesi-label{ font-weight:700; font-size:11.5px; color:var(--muted); }
+  .area-mark{ font-size:12px; margin-right:8px; white-space:nowrap; }
+  .area-mark.ok{ color:var(--ok); }
+  .area-mark.bad{ color:var(--bad); }
+
+  .status-line{ text-align:center; font-size:13px; font-weight:700; color:var(--muted); padding:20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="date-nav">
+      <button id="prevDay">‹</button>
+      <span id="dateLabel">—</span>
+      <button id="nextDay">›</button>
+    </div>
+    <h1>Monitoring PPNPN Dashboard</h1>
+    <button class="refresh-btn" id="refreshBtn">⟳ Muat Ulang</button>
+  </header>
+
+  <div id="statusLine" class="status-line">Memuat data...</div>
+
+  <div id="dashboardBody" style="display:none;">
+
+    <div class="grid-top">
+      <div class="card">
+        <div class="pill-title">Sesi Kerja</div>
+        <div id="sesiKerjaChart"></div>
+      </div>
+
+      <div class="card">
+        <div class="pill-title">Area Kerja</div>
+        <div id="areaKerjaChart" class="gauge-grid"></div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="pill-title">Daily View</div>
+          <div id="dailyView"></div>
+        </div>
+        <div class="card">
+          <div class="pill-title">Area Belum Dikerjakan</div>
+          <div id="areaBelum" class="scroll-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-mid">
+      <div class="card">
+        <div class="pill-title">Keterangan Tambahan</div>
+        <div id="keteranganList" class="scroll-list"></div>
+      </div>
+      <div class="card">
+        <div class="pill-title">Team Performance</div>
+        <div id="teamPerformance" class="perf-grid"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="pill-title">Detil Kerja</div>
+      <div id="detilKerja" class="detil-grid"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — same Apps Script deployment as the submission form
+   ============================================================ */
+const ENDPOINT = "https://script.google.com/macros/s/AKfycbwbpcJA_g3KCupaICOlIQKM8qW74Sns-CYQ167_ufsWoB932o10lVkW8mbBqRLi2PjQKA/exec";
+
+const MONTHS_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+
+let currentDate = new Date();
+let data = null; // { date, employees, submissions, catatan }
+
+/* ============================================================
+   Date helpers
+   ============================================================ */
+function toDateStr(d) {
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,"0"), day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+function formatDisplayDate(d) {
+  return `${d.getDate()} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+document.getElementById("dateLabel").textContent = formatDisplayDate(currentDate);
+document.getElementById("prevDay").addEventListener("click", () => {
+  currentDate.setDate(currentDate.getDate() - 1);
+  document.getElementById("dateLabel").textContent = formatDisplayDate(currentDate);
+  loadData();
+});
+document.getElementById("nextDay").addEventListener("click", () => {
+  currentDate.setDate(currentDate.getDate() + 1);
+  document.getElementById("dateLabel").textContent = formatDisplayDate(currentDate);
+  loadData();
+});
+document.getElementById("refreshBtn").addEventListener("click", loadData);
+
+/* ============================================================
+   Fetch + render
+   ============================================================ */
+async function loadData() {
+  document.getElementById("statusLine").style.display = "block";
+  document.getElementById("statusLine").textContent = "Memuat data...";
+  document.getElementById("dashboardBody").style.display = "none";
+  try {
+    const url = `${ENDPOINT}?action=dashboard&date=${toDateStr(currentDate)}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (json.status !== "ok") throw new Error(json.message || "Gagal memuat data");
+    data = json;
+    renderAll();
+    document.getElementById("statusLine").style.display = "none";
+    document.getElementById("dashboardBody").style.display = "block";
+  } catch (err) {
+    document.getElementById("statusLine").textContent = "Gagal memuat data: " + err.message;
+  }
+}
+
+function renderAll() {
+  const { employees, submissions } = data;
+
+  // Fast lookup: has (id, sesi, area) been submitted today?
+  const submittedSet = new Set(submissions.map(s => s.id + "||" + s.sesi + "||" + s.area));
+  // Distinct (id, area) pairs submitted today, regardless of session —
+  // used for the Area Kerja gauges' "All Sessions" view.
+  const submittedAreaPairs = new Set(submissions.map(s => s.id + "||" + s.area));
+
+  const jabatanList = [...new Set(employees.map(e => e.jabatan).filter(Boolean))];
+
+  renderSesiKerja(jabatanList, submissions);
+  renderAreaKerja(jabatanList, employees, submittedSet, submittedAreaPairs);
+  renderDailyView(employees, submissions, submittedAreaPairs);
+  renderAreaBelum(employees, submittedSet);
+  renderKeterangan(data.catatan);
+  renderTeamPerformance(employees, submittedSet);
+  renderDetilKerja(employees, submittedSet);
+}
+
+/* ---------- 1. Sesi Kerja: submissions today per Jabatan ---------- */
+function renderSesiKerja(jabatanList, submissions) {
+  const counts = jabatanList.map(j => submissions.filter(s => s.jabatan === j).length);
+  const max = Math.max(1, ...counts);
+  const el = document.getElementById("sesiKerjaChart");
+  el.innerHTML = jabatanList.map((j, i) => `
+    <div class="bar-row">
+      <div class="label">${j}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(counts[i]/max*100).toFixed(0)}%"></div></div>
+      <div class="bar-val">${counts[i]}</div>
+    </div>
+  `).join("") || `<div class="empty-note">Belum ada data pegawai.</div>`;
+}
+
+/* ---------- 2. Area Kerja: gauge per Jabatan, with a session filter ---------- */
+function renderAreaKerja(jabatanList, employees, submittedSet, submittedAreaPairs) {
+  const el = document.getElementById("areaKerjaChart");
+  el.innerHTML = jabatanList.map((j, idx) => {
+    const emps = employees.filter(e => e.jabatan === j);
+    const sesiOptions = [...new Set(emps.flatMap(e => e.sesi))];
+    const gaugeId = "gauge-" + idx;
+    return `
+      <div class="gauge-card">
+        <select id="sel-${gaugeId}" onchange="window.__updateGauge('${gaugeId}','${j.replace(/'/g,"\\'")}')">
+          <option value="">Semua Sesi</option>
+          ${sesiOptions.map(s => `<option value="${s}">${s}</option>`).join("")}
+        </select>
+        <div class="donut" id="${gaugeId}"><span id="${gaugeId}-pct"></span></div>
+        <div class="gauge-name">${j}</div>
+        <div class="gauge-frac" id="${gaugeId}-frac"></div>
+      </div>`;
+  }).join("") || `<div class="empty-note">Belum ada data pegawai.</div>`;
+
+  jabatanList.forEach((j, idx) => window.__updateGauge("gauge-" + idx, j));
+
+  // Exposed so the <select onchange> above can call back into this scope
+  window.__updateGauge = function(gaugeId, jabatan) {
+    const sesiFilter = document.getElementById("sel-" + gaugeId)?.value || "";
+    const emps = employees.filter(e => e.jabatan === jabatan && (!sesiFilter || e.sesi.includes(sesiFilter)));
+
+    let total = 0, submitted = 0;
+    emps.forEach(e => {
+      total += e.areas.length;
+      e.areas.forEach(a => {
+        const hit = sesiFilter
+          ? submittedSet.has(e.id + "||" + sesiFilter + "||" + a)
+          : submittedAreaPairs.has(e.id + "||" + a);
+        if (hit) submitted++;
+      });
+    });
+
+    const pct = total ? Math.round(submitted / total * 100) : 0;
+    const donut = document.getElementById(gaugeId);
+    donut.style.background = `conic-gradient(var(--ok) ${pct}%, var(--track) ${pct}% 100%)`;
+    document.getElementById(gaugeId + "-pct").textContent = pct + "%";
+    document.getElementById(gaugeId + "-frac").textContent = `${submitted}/${total}`;
+  };
+}
+
+/* ---------- 3. Daily View ---------- */
+function renderDailyView(employees, submissions, submittedAreaPairs) {
+  const totalAreaSlots = employees.reduce((sum, e) => sum + e.areas.length, 0);
+  const submittedAreaSlots = submittedAreaPairs.size;
+  const activeEmployees = new Set(submissions.map(s => s.id)).size;
+
+  document.getElementById("dailyView").innerHTML = `
+    <div class="check-item"><div class="check-icon">✓</div>${submittedAreaSlots}/${totalAreaSlots} Area Kerja aktif</div>
+    <div class="check-item"><div class="check-icon">✓</div>${activeEmployees} PPNPN aktif</div>
+  `;
+}
+
+/* ---------- 4. Area Belum Dikerjakan ---------- */
+function renderAreaBelum(employees, submittedSet) {
+  const rows = [];
+  employees.forEach(e => {
+    e.sesi.forEach(s => {
+      const missing = e.areas.filter(a => !submittedSet.has(e.id + "||" + s + "||" + a));
+      if (missing.length) rows.push({ nama: e.nama, sesi: s, missing });
+    });
+  });
+  const el = document.getElementById("areaBelum");
+  el.innerHTML = rows.length
+    ? rows.map(r => `<div class="row"><span class="miss">${r.missing.join(", ")}</span> — <b>${r.nama}</b> (${r.sesi})</div>`).join("")
+    : `<div class="empty-note">Semua area sudah dikerjakan.</div>`;
+}
+
+/* ---------- 5. Keterangan Tambahan ---------- */
+function renderKeterangan(catatan) {
+  const el = document.getElementById("keteranganList");
+  el.innerHTML = (catatan && catatan.length)
+    ? catatan.map(c => `<div class="row"><b>${c.nama}</b> (${c.sesi} · ${c.area}): ${c.keterangan}</div>`).join("")
+    : `<div class="empty-note">Belum ada catatan tambahan hari ini.</div>`;
+}
+
+/* ---------- 6. Team Performance ---------- */
+function renderTeamPerformance(employees, submittedSet) {
+  const el = document.getElementById("teamPerformance");
+  el.innerHTML = employees.map(e => {
+    const total = e.areas.length * e.sesi.length;
+    let submitted = 0;
+    e.sesi.forEach(s => e.areas.forEach(a => { if (submittedSet.has(e.id+"||"+s+"||"+a)) submitted++; }));
+    const pct = total ? Math.round(submitted/total*100) : 0;
+    return `
+      <div class="perf-item">
+        <div class="perf-name-row"><span>${e.nama}</span><span class="perf-pct">${pct}%</span></div>
+        <div class="perf-track"><div class="perf-fill" style="width:${pct}%"></div></div>
+      </div>`;
+  }).join("") || `<div class="empty-note">Belum ada data pegawai.</div>`;
+}
+
+/* ---------- 7. Detil Kerja ---------- */
+function renderDetilKerja(employees, submittedSet) {
+  const el = document.getElementById("detilKerja");
+  el.innerHTML = employees.map(e => `
+    <div class="detil-card">
+      <h4>${e.nama}</h4>
+      ${e.sesi.map(s => `
+        <div class="sesi-block">
+          <div class="sesi-label">${s}</div>
+          ${e.areas.map(a => {
+            const ok = submittedSet.has(e.id+"||"+s+"||"+a);
+            return `<span class="area-mark ${ok ? "ok" : "bad"}">${ok ? "✓" : "✗"} ${a}</span>`;
+          }).join("")}
+        </div>`).join("")}
+    </div>
+  `).join("") || `<div class="empty-note">Belum ada data pegawai.</div>`;
+}
+
+loadData();
+// Auto-refresh every 60 seconds so the view stays close to real-time
+setInterval(loadData, 60000);
+</script>
+</body>
+</html>
