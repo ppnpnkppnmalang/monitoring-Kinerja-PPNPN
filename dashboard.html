@@ -130,14 +130,19 @@
   .perf-fill{ height:100%; background:var(--ok); }
 
   /* Detil kerja */
-  .detil-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:12px; }
+  .detil-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(250px,1fr)); gap:12px; }
   .detil-card{ border:1px solid var(--line); border-radius:12px; padding:10px 12px; }
-  .detil-card h4{ margin:0 0 6px; font-size:13px; }
-  .sesi-block{ margin-bottom:6px; }
-  .sesi-block .sesi-label{ font-weight:700; font-size:11.5px; color:var(--muted); }
-  .area-mark{ font-size:12px; margin-right:8px; white-space:nowrap; }
-  .area-mark.ok{ color:var(--ok); }
-  .area-mark.bad{ color:var(--bad); }
+  .detil-card h4{ margin:0 0 8px; font-size:13.5px; }
+  .sesi-block{ margin-bottom:10px; }
+  .sesi-block .sesi-label{ display:block; font-weight:700; font-size:11.5px; color:var(--muted); margin-bottom:5px; }
+  .area-list-wrap{ display:flex; flex-wrap:wrap; gap:5px; }
+  .area-mark{
+    display:inline-flex; align-items:center; gap:3px;
+    font-size:11px; font-weight:700; padding:3px 8px;
+    border-radius:999px; white-space:nowrap;
+  }
+  .area-mark.ok{ color:var(--ok); background:rgba(76,122,63,0.10); }
+  .area-mark.bad{ color:var(--bad); background:rgba(179,69,47,0.08); }
 
   .status-line{ text-align:center; font-size:13px; font-weight:700; color:var(--muted); padding:20px; }
 </style>
@@ -243,17 +248,29 @@ async function loadData() {
   document.getElementById("statusLine").style.display = "block";
   document.getElementById("statusLine").textContent = "Memuat data...";
   document.getElementById("dashboardBody").style.display = "none";
-  try {
-    const url = `${ENDPOINT}?action=dashboard&date=${toDateStr(currentDate)}`;
-    const res = await fetch(url);
-    const json = await res.json();
-    if (json.status !== "ok") throw new Error(json.message || "Gagal memuat data");
-    data = json;
-    renderAll();
-    document.getElementById("statusLine").style.display = "none";
-    document.getElementById("dashboardBody").style.display = "block";
-  } catch (err) {
-    document.getElementById("statusLine").textContent = "Gagal memuat data: " + err.message;
+
+  // Apps Script occasionally serves a brief interim page right after a
+  // redeploy, or has a rare cold-start hiccup. Retry silently a couple
+  // times before showing the person an error.
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const url = `${ENDPOINT}?action=dashboard&date=${toDateStr(currentDate)}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.status !== "ok") throw new Error(json.message || "Gagal memuat data");
+      data = json;
+      renderAll();
+      document.getElementById("statusLine").style.display = "none";
+      document.getElementById("dashboardBody").style.display = "block";
+      return;
+    } catch (err) {
+      if (attempt === maxAttempts) {
+        document.getElementById("statusLine").textContent = "Gagal memuat data: " + err.message;
+      } else {
+        await new Promise(r => setTimeout(r, 1500)); // brief pause before retrying
+      }
+    }
   }
 }
 
@@ -394,11 +411,13 @@ function renderDetilKerja(employees, submittedSet) {
       <h4>${e.nama}</h4>
       ${e.sesi.map(s => `
         <div class="sesi-block">
-          <div class="sesi-label">${s}</div>
-          ${e.areas.map(a => {
-            const ok = submittedSet.has(e.id+"||"+s+"||"+a);
-            return `<span class="area-mark ${ok ? "ok" : "bad"}">${ok ? "✓" : "✗"} ${a}</span>`;
-          }).join("")}
+          <span class="sesi-label">${s}</span>
+          <div class="area-list-wrap">
+            ${e.areas.map(a => {
+              const ok = submittedSet.has(e.id+"||"+s+"||"+a);
+              return `<span class="area-mark ${ok ? "ok" : "bad"}">${ok ? "✓" : "✗"} ${a}</span>`;
+            }).join("")}
+          </div>
         </div>`).join("")}
     </div>
   `).join("") || `<div class="empty-note">Belum ada data pegawai.</div>`;
